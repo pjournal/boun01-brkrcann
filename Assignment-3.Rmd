@@ -1,0 +1,171 @@
+---
+title: "Diamond Price Estimation"
+author: "Berker Can"
+date: "13/09/2020"
+output: 
+  html_document:
+          toc: true
+          toc_depth: 3
+          toc_float: true
+          number_sections: true
+          code_folding: hide
+          
+---
+
+# Loading Packages
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(knitr) 
+library(RColorBrewer)
+```
+
+# Data Processing
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+set.seed(503)
+diamonds_test <- diamonds %>% mutate(diamond_id = row_number()) %>% 
+  group_by(cut, color, clarity) %>% sample_frac(0.2) %>% ungroup()
+diamonds_train <- anti_join(diamonds %>% mutate(diamond_id = row_number()), 
+                            diamonds_test, by = "diamond_id")
+```
+
+# Explanatory Data Analysis
+
+## Carat
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+ ggplot(data = diamonds, mapping = aes(x = carat)) + geom_histogram(bins = 500)
+```
+
+## Color
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+ ggplot(diamonds, aes(x = color, y = ..)) + geom_bar(aes(y = ..count.. / sum(..count..))) + ylab("Proportion")
+```
+
+## Clarity
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+diamonds %>%
+  mutate(clarity = factor(clarity)) %>%
+  group_by(clarity) %>%
+  summarise(clarity_count = n())%>%
+  arrange(desc(clarity_count)) %>%
+  head(20) %>%
+  
+  ggplot(., aes(x=clarity_count, y = reorder(clarity, clarity_count), fill= clarity)) +
+  geom_col() +
+  geom_text(aes(label = clarity_count), size=3, color = "black", position = position_stack(vjust = 0.95)) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(x = "Count",
+         y = "Clarity")
+  
+```
+
+## Cut
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+diamonds %>%
+  #mutate(cut = factor(cut)) %>%
+  group_by(cut) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = 100*count/sum(count)) %>%
+ggplot(., aes(x=cut, y = count, fill = count)) +
+  geom_col() +
+  scale_fill_gradient("count", low="lightpink1", high="lightpink4") +
+  geom_line(aes(y = count), size = 1.2, color="black", group = 1) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs( x = "Quality of Cut",
+       y = "Number of Cut")
+```
+
+## Price and Carat 
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+ggplot(data=diamonds, aes(x=carat, y=price)) +
+  # get rid of top percentile
+  scale_x_continuous(lim=c(0,quantile(diamonds$carat,0.99))) +
+  scale_y_continuous(lim=c(0,quantile(diamonds$price,0.99))) +
+  geom_point(fill=I('#dd3333'), color= I("black"), aes(alpha=1/10),shape=21)+ xlab("Carat") + ylab("Price")
+  
+```
+
+## Price and Cut
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+ggplot(diamonds, aes(factor(cut), price, fill=cut)) + geom_boxplot() + ggtitle("Diamond Price according Cut") + xlab("Type of Cut") + ylab("Price")
+```
+
+## Price and Color
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+ggplot(diamonds, aes(factor(color), price, fill=color)) + geom_boxplot() + ggtitle("Diamond Price according Color") + xlab("Type of Color") + ylab("Price")
+```
+ 
+## Cut and Color
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+ggplot(diamonds, aes(x = color, fill = cut)) + geom_bar(position = "fill")
+```
+
+## Cut and Clarity
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+ggplot(diamonds, aes(cut, clarity)) + 
+  geom_jitter(alpha = 0.05)
+```
+
+## Price with Cut and Carat
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+diamonds %>%
+  ggplot(mapping = aes(x = carat, y = price))+
+  geom_point(mapping = aes(color = cut))
+```
+
+# PCA
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+diamonds_pca <- princomp(as.matrix(diamonds_train[,sapply(diamonds_train, class) == "numeric"]),cor=T)
+summary(diamonds_pca,loadings=TRUE)
+```
+
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+plot(diamonds_pca,type="l")
+```
+
+# Prediction
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+formul<-price~carat+cut+color+clarity+depth+table+x+y+z
+
+Diamond.lm.model<-lm(formul,diamonds_train)
+diamonds_test$lmprediction<-predict(Diamond.lm.model,newdata = diamonds_test)
+```
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+summary(Diamond.lm.model)
+```
+
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+linear.rsquared<-1 - (sum((diamonds_test$lmprediction-diamonds_test$price)^2)/sum((diamonds_test$price-mean(diamonds_test$price))^2))
+linear.rsquared
+```
+
+```{r,warning=FALSE,message=FALSE,class.source="fold-show"}
+ggplot(diamonds_test,aes(lmprediction,price,alpha=0.6)) +
+  geom_point(color="orange")+
+  geom_abline(color="black",size=1.2)+
+  theme_minimal() +
+  theme(legend.position = "none", plot.title = element_text(vjust = 0.5))+
+  ggtitle("Predictions vs Actual Prices")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
